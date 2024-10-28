@@ -13,6 +13,17 @@ pyaml.add_representer(bool,lambda s,o: s.represent_scalar('tag:yaml.org,2002:boo
 IGNORE_VALUES = [None, "", [], "null", {}, "default", 0, ",", "no"]
 
 
+def shell_escape_string(input_string: str) -> str:
+    # Currently known issues:
+    # - Basic Auth strings (e.g. set via Træfik labels) contain $ characters, which must be doubled. See https://stackoverflow.com/a/40621373/5885325
+    replaced_string = input_string
+    for substitution in (
+            ("$", "$$")
+    ):
+        replaced_string = replaced_string.replace(substitution[0], substitution[1])
+    return replaced_string
+
+
 def list_container_names():
     c = docker.from_env()
     return [container.name for container in c.containers.list(all=True)]
@@ -282,6 +293,14 @@ def generate(cname, createvolumes=False):
     except (KeyError, TypeError):
         # No ports exposed/bound. Continue without them.
         ports = None
+    
+    # fixup strings in labels and env
+    if values["labels"] is not None:
+        for label_key, label_value in values["labels"].items():
+            values["labels"][label_key] = shell_escape_string(label_value)
+    if values["environment"] is not None:
+        for label_key, label_value in values["environment"].items():
+            values["environment"][label_key] = shell_escape_string(label_value)
 
     # Iterate through values to finish building yaml dict.
     for key in values:
